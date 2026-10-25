@@ -4,11 +4,14 @@ Add your own code here, not in tools.py. Keeping them separate means you can
 `git pull` our updates all semester without conflicts.
 """
 
+from time import time
+
 import numpy as np
 from scipy.spatial.transform import Rotation
 
 # Makes everything in tools.py available here, just as if your code were at the
 # bottom of that file.
+from ae483.myclients import MyCrazyflieClient
 from ae483.tools import *
 
 
@@ -336,3 +339,24 @@ def plot_path(locations: np.ndarray, start_location: np.ndarray, path: np.ndarra
     plt.title(f'Optimized path through {len(locations)} locations')
     plt.grid()
     plt.show()
+    
+def fly_path_milestone1(drone_client: MyCrazyflieClient, path: np.ndarray, t_hover: float, t_dropoff: float):
+    """Fly the drone through the given path by calling drone_client.move()
+
+    Args:
+        drone_client (MyCrazyflieClient): The drone client object.
+        path (np.ndarray): An array of shape (n, 2) containing the locations to visit in optimal order.
+        t_hover (float): The time to hover at each location (in seconds).
+        t_dropoff (float): The time to hover at delivery height at each location (in seconds).
+    """
+    # TODO: implement this function as required by Task 3 of Milestone #1
+    # Drone sequence:
+        # Take off to a safe height (e.g., 0.5 m)
+        # for each location in the path:
+            # Fly to the location at safe height (e.g., 0.5 m)
+            # Hover at the location for t_hover seconds
+            # Descend to delivery height (e.g., 0.2 m)
+            # Hover at delivery height for t_dropoff seconds
+            # Ascend back to safe height (e.g., 0.5 m)
+        # Return to the starting location at safe height (e.g., 0.5 m)
+        # Land at the starting location
