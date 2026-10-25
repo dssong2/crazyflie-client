@@ -219,3 +219,120 @@ def sync_data_mocap(raw_data_mocap, t, z_drone,
 
     # Return the result
     return transformed_data_mocap
+
+
+################################################
+# Project Functions
+################################################
+def sample_locations(n: int, x_range: tuple, y_range: tuple, min_distance: float, start_location: np.ndarray, seed: int = None) -> np.ndarray:
+    """Sample random locations within the specified x and y ranges.
+
+    Args:
+        n (int): Number of random locations to sample.
+        x_range (tuple): A tuple specifying the range of x values (min_x, max_x).
+        y_range (tuple): A tuple specifying the range of y values (min_y, max_y).
+        min_distance (float): Minimum distance between sampled locations.
+        start_location (np.ndarray): A tuple specifying the starting location (x0, y0).
+        seed (int, optional): Random seed for reproducibility. Defaults to None.
+
+    Returns:
+        np.ndarray: An array of shape (n, 2) containing the sampled locations.
+    """
+    if seed is not None:
+        np.random.seed(seed)
+    locations = []
+    while len(locations) < n:
+        # Sample a random location within the specified ranges
+        x = np.random.uniform(x_range[0], x_range[1])
+        y = np.random.uniform(y_range[0], y_range[1])
+        new_location = np.array([x, y])
+        
+        # Check if the new location is at least min_distance away from existing locations and the start location
+        if all(np.linalg.norm(new_location - loc) >= min_distance for loc in locations) and np.linalg.norm(new_location - start_location) >= min_distance:
+            locations.append(new_location)
+    
+    return np.array(locations)
+
+def optimize_path(start_location: np.ndarray, locations: np.ndarray) -> np.ndarray:
+    """Optimize the path through the given locations. Always starts and ends at the start location. TSP problem solved using the Held-Karp dynamic programming formulation (Held & Karp, 1962, Sec. 1.2).
+
+    Args:   
+        start_location (np.ndarray): The starting location.
+        locations (np.ndarray): An array of shape (n, 2) containing the locations to visit.
+
+    Returns:
+        np.ndarray: An array of shape (n+2, 2) containing the locations in the optimized order, beginning and ending at the start location.
+    """
+    # City 1 (index 0) is the start; cities 2..n (indices 1..n-1) are the locations
+    P = np.vstack([np.asarray(start_location, float), np.asarray(locations, float).reshape(-1, 2)])
+    n = len(P)
+    if n == 1:
+        return P[[0, 0]]
+    a = np.linalg.norm(P[:, None] - P[None], axis=2) # cost matrix a_ij
+    A = a[1:, 1:] # costs among cities 2..n
+
+    # S is a subset of {2, ..., n} as a bitmask; bit b corresponds to city index b+1
+    m = n - 1
+    N = 1 << m
+    C = np.full((N, m), np.inf) # C[S, l]: min cost from city 1 through all of S, ending at l
+
+    # ---- Phase 1: compute C(S, l) recursively ----
+    # (5a) n(S) = 1: C({l}, l) = a_1l
+    for l in range(m):
+        C[1 << l, l] = a[0, l + 1]
+
+    masks = np.arange(N)
+    size = np.zeros(N, dtype=int) # n(S)
+    for b in range(m):
+        size += (masks >> b) & 1
+
+    # (5b) n(S) > 1: C(S, l) = min_{m in S-l} [C(S-l, m) + a_ml], in increasing n(S)
+    for s in range(2, m + 1):
+        S_s = masks[size == s]
+        for l in range(m):
+            S = S_s[((S_s >> l) & 1) == 1]
+            C[S, l] = np.min(C[S ^ (1 << l)] + A[:, l], axis=1) # inf where m not in S-l
+
+    # (6) optimum cost: min_l [C({2..n}, l) + a_l1]
+    full = N - 1
+    opt = np.min(C[full] + a[1:, 0])
+
+    # ---- Phase 2: recover optimum permutation (i_n first, then i_{n-1}, ..., i_2) ----
+    # (7) i_n satisfies opt = C({2..n}, i_n) + a_{i_n 1}
+    l = int(np.flatnonzero(np.isclose(C[full] + a[1:, 0], opt))[0])
+    tour, S = [l], full
+    # (8) i_p satisfies C(S, i_{p+1}) = C(S - i_{p+1}, i_p) + a_{i_p i_{p+1}}
+    for _ in range(m - 1):
+        S_prev = S ^ (1 << l)
+        l = int(np.flatnonzero(np.isclose(C[S_prev] + A[:, l], C[S, l]))[0])
+        S = S_prev
+        tour.append(l)
+
+    order = [0] + [i + 1 for i in reversed(tour)] + [0]
+    return P[order]
+
+def plot_path(locations: np.ndarray, start_location: np.ndarray, path: np.ndarray, x_range: tuple, y_range: tuple):
+    """Plot the optimized path through the given locations.
+
+    Args:
+        locations (np.ndarray): An array of shape (n, 2) containing the locations to visit.
+        start_location (np.ndarray): The starting location.
+        path (np.ndarray): The optimized path.
+        x_range (tuple): The range of x-coordinates to display.
+        y_range (tuple): The range of y-coordinates to display.
+    """
+    plt.figure()
+    plt.plot(*locations.T, 'o', label='Locations')
+    plt.plot(*start_location, 's', label='Start')
+    plt.quiver(
+        path[:-1, 0], path[:-1, 1],
+        np.diff(path[:, 0]), np.diff(path[:, 1]),
+        angles='xy', scale_units='xy', scale=1,
+        color='purple', width=0.005
+    )
+    plt.xlim(x_range)
+    plt.ylim(y_range)
+    plt.legend(loc='upper left', bbox_to_anchor=(1.02, 1))
+    plt.title(f'Optimized path through {len(locations)} locations')
+    plt.grid()
+    plt.show()
