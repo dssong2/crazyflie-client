@@ -12,14 +12,13 @@ class MyCrazyflieClient(CrazyflieClient):
         p_inW_1 = np.array(p_inW_1)
         p_inW_2 = np.array(p_inW_2)
 
-        d = 0.               # FIXME (A) — distance from p_inW_1 to p_inW_2
-        dt = 0.              # FIXME (B) — time to travel that distance at speed v
-
+        d = np.linalg.norm(p_inW_2 - p_inW_1)
+        dt = d / v
         start_time = time.time()
         while True:
             t = time.time()
-            s = 0.           # FIXME (C) — fraction of the distance travelled by time t
-            p_inW_des = 0.   # FIXME (D) — desired position at time t
+            s = np.clip((t-start_time) / dt, 0, 1 )
+            p_inW_des = (1 - s) * p_inW_1 + s * p_inW_2
 
             self.cf.commander.send_position_setpoint(
                 p_inW_des[0], p_inW_des[1], p_inW_des[2], yaw
