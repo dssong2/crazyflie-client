@@ -4,10 +4,11 @@ Add your own code here, not in tools.py. Keeping them separate means you can
 `git pull` our updates all semester without conflicts.
 """
 
-from time import time
+from time import time, perf_counter
 
 import numpy as np
 from scipy.spatial.transform import Rotation
+from itertools import permutations
 
 # Makes everything in tools.py available here, just as if your code were at the
 # bottom of that file.
@@ -256,7 +257,7 @@ def sample_locations(n: int, x_range: tuple, y_range: tuple, min_distance: float
     
     return np.array(locations)
 
-def optimize_path(start_location: np.ndarray, locations: np.ndarray) -> np.ndarray:
+def optimal_path(start_location: np.ndarray, locations: np.ndarray) -> np.ndarray:
     """Optimize the path through the given locations. Always starts and ends at the start location. TSP problem solved using the Held-Karp dynamic programming formulation (Held & Karp, 1962, Sec. 1.2).
 
     Args:   
@@ -264,13 +265,14 @@ def optimize_path(start_location: np.ndarray, locations: np.ndarray) -> np.ndarr
         locations (np.ndarray): An array of shape (n, 2) containing the locations to visit.
 
     Returns:
-        np.ndarray: An array of shape (n+2, 2) containing the locations in the optimized order, beginning and ending at the start location.
+        tuple: A tuple containing the optimized path (np.ndarray) and the computation time (float).
     """
     # City 1 (index 0) is the start; cities 2..n (indices 1..n-1) are the locations
+    t0 = perf_counter()
     P = np.vstack([np.asarray(start_location, float), np.asarray(locations, float).reshape(-1, 2)])
     n = len(P)
     if n == 1:
-        return P[[0, 0]]
+        return P[[0, 0]], perf_counter() - t0
     a = np.linalg.norm(P[:, None] - P[None], axis=2) # cost matrix a_ij
     A = a[1:, 1:] # costs among cities 2..n
 
@@ -312,7 +314,60 @@ def optimize_path(start_location: np.ndarray, locations: np.ndarray) -> np.ndarr
         tour.append(l)
 
     order = [0] + [i + 1 for i in reversed(tour)] + [0]
-    return P[order]
+    compute_time = perf_counter() - t0
+    return P[order], compute_time
+
+def naive_path(start_location: np.ndarray, locations: np.ndarray) -> np.ndarray:
+    """Greedy path: from the current point, always go to the closest unvisited point, then return to start.
+
+    Args:
+        start_location (np.ndarray): The starting location.
+        locations (np.ndarray): An array of shape (n, 2) containing the locations to visit.
+
+    Returns:
+        tuple: A tuple containing the optimized path (np.ndarray) and the computation time (float).
+    """
+    t0 = perf_counter()
+    current = np.asarray(start_location, float)
+    unvisited = list(np.asarray(locations, float))
+    path = [current]
+
+    while unvisited:
+        # find the closest unvisited point
+        dists = [np.linalg.norm(p - current) for p in unvisited]
+        closest = unvisited.pop(int(np.argmin(dists)))
+        path.append(closest)
+        current = closest
+
+    path.append(np.asarray(start_location, float))  # return home
+    compute_time = perf_counter() - t0
+    return np.array(path), compute_time
+
+def brute_path(locations: np.ndarray, start_location: np.ndarray) -> np.ndarray:
+    """Compute a naive path through the given locations by checking every possible ordering of the
+    locations and returning the one with the minimum total distance. Always starts and ends at the
+    start location.
+
+    Args:
+        locations (np.ndarray): An array of shape (n, 2) containing the locations to visit.
+        start_location (np.ndarray): The starting location.
+
+    Returns:
+        tuple: A tuple containing the optimized path (np.ndarray) and the computation time (float).
+    """
+    t0 = perf_counter()
+    perms = np.array(list(permutations(locations)))  # every ordering of the locations
+    perms = [np.vstack([start_location, perm, start_location]) for perm in perms]
+    best_cost, best_order = np.inf, None
+
+    for i in range(len(perms)):
+        cost = np.sum(np.linalg.norm(np.diff(perms[i], axis=0), axis=1))
+        if cost < best_cost:
+            best_cost, best_order = cost, i
+
+    brute_path = perms[best_order]
+    compute_time = perf_counter() - t0
+    return brute_path, compute_time
 
 def plot_path(locations: np.ndarray, start_location: np.ndarray, path: np.ndarray, x_range: tuple, y_range: tuple):
     """Plot the optimized path through the given locations.
