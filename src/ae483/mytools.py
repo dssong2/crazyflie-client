@@ -396,7 +396,7 @@ def plot_path(locations: np.ndarray, start_location: np.ndarray, path: np.ndarra
     plt.show()
     
 def fly_path_milestone1(drone_client: MyCrazyflieClient, path: np.ndarray, t_hover: float, t_dropoff: float):
-    """Fly the drone through the given path by calling drone_client.move()
+    """Fly the drone through the given path by calling drone_client.move(). Called in flight.py.
 
     Args:
         drone_client (MyCrazyflieClient): The drone client object.
