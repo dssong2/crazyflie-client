@@ -400,18 +400,47 @@ def fly_path_milestone1(drone_client: MyCrazyflieClient, path: np.ndarray, t_hov
 
     Args:
         drone_client (MyCrazyflieClient): The drone client object.
-        path (np.ndarray): An array of shape (n, 2) containing the locations to visit in optimal order.
+        path (np.ndarray): An array of shape (n, 2) containing the locations to visit in optimal order. (actually is shapen (n+2, 2) because it includes the start and end locations)
         t_hover (float): The time to hover at each location (in seconds).
         t_dropoff (float): The time to hover at delivery height at each location (in seconds).
     """
-    # TODO: implement this function as required by Task 3 of Milestone #1
-    # Drone sequence:
-        # Take off to a safe height (e.g., 0.5 m)
-        # for each location in the path:
-            # Fly to the location at safe height (e.g., 0.5 m)
-            # Hover at the location for t_hover seconds
-            # Descend to delivery height (e.g., 0.2 m)
-            # Hover at delivery height for t_dropoff seconds
-            # Ascend back to safe height (e.g., 0.5 m)
-        # Return to the starting location at safe height (e.g., 0.5 m)
-        # Land at the starting location
+                    # TODO: implement this function as required by Task 3 of Milestone #1
+                    # Drone sequence:
+                        # Take off to a safe height (e.g., 0.5 m)
+                        # for each location in the path:
+                            # Fly to the location at safe height (e.g., 0.5 m)
+                            # Hover at the location for t_hover seconds
+                            # Descend to delivery height (e.g., 0.2 m)
+                            # Hover at delivery height for t_dropoff seconds
+                            # Ascend back to safe height (e.g., 0.5 m)
+                        # Return to the starting location at safe height (e.g., 0.5 m)
+                        # Land at the starting location
+
+    z_safe = 0.5  # Safe height for flying between locations
+    z_dropoff = 0.2  # Delivery height for dropping off packages
+    v = 0.3 # Speed of the drone in m/s
+
+    x0, y0 = path[0]  # Starting location
+    p = [x0, y0, z_safe] # current position
+
+    # Take off to safe height
+    drone_client.move_smooth([x0, y0, 0], p, 0, v)
+
+    for x, y in path[1:-1]:
+        #fly to the next location at safe height
+        drone_client.move_smooth(p, [x, y, z_safe], 0, v)
+        p = [x, y, z_safe]
+        # hover at the location for t_hover sec
+        drone_client.move(x, y, z_safe, 0, t_hover)
+        # descend to delivery height
+        drone_client.move_smooth(p, [x, y, z_dropoff], 0, v)
+        # hover at delivery height for t_dropoff sec
+        drone_client.move(x,y,z_dropoff, 0, t_dropoff)
+        # ascend back to safe height
+        drone_client.move_smooth([x, y, z_dropoff], p, 0 , v)
+
+    # Return to the starting location at safe height
+    drone_client.move_smooth(p, [x0, y0, z_safe], 0, v)
+    # Land at the starting location
+    drone_client.move_smooth([x0, y0, z_safe], [x0, y0, 0.1], 0, v) #added in small 0.1 m height to avoid crashing into the ground
+    drone_client.stop
