@@ -47,7 +47,7 @@ use_controller = False
 use_observer = False
 
 # Specify the name of the file in which to save flight data
-data_filename = 'MOCAP_flight1_task4_mile1.json'
+data_filename = 'MOCAP_flight3_task4_mile1.json'
 
 # Specify the name of the file from which to read control gains, or None if
 # this flight does not use a custom controller. This file is written by your
@@ -177,7 +177,7 @@ try:
         path = path + p_start
 
     # Fly the optimal path
-    fly_path_milestone1(drone_client, path, t_hover=1.0, t_dropoff=2.0)
+    fly_path_milestone1(drone_client, path, t_hover=1.5, t_dropoff=2.0)
 
     # Pause after landing
     drone_client.stop(3.0)
