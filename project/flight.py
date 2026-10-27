@@ -5,7 +5,7 @@ import json
 import os
 from ae483.clients import QualisysClient
 from ae483.myclients import MyCrazyflieClient
-from ae483.mytools import fly_path_milestone1
+from ae483.mytools import sample_locations, optimal_path, fly_path_milestone1
 
 
 ###################################
@@ -20,21 +20,23 @@ uri = 'radio://0/59/2M/E7E7E7E7E7'
 # Specify the name of the rigid body that corresponds to your active marker
 # deck in the motion capture system. If your marker deck number is X, this name
 # should be 'marker_deck_X'.
-marker_deck_name = 'marker_deck_50'
+# marker_deck_name = 'marker_deck_50'
+marker_deck_name = 'marker_deck_10'
 
 # Specify the marker IDs that correspond to your active marker deck in the
 # motion capture system. If your marker deck number is X, these IDs should be
 # [X + 1, X + 2, X + 3, X + 4]. They are listed in clockwise order (viewed
 # top-down), starting from the front.
-marker_deck_ids = [51, 52, 53, 54]
+# marker_deck_ids = [51, 52, 53, 54]
+marker_deck_ids = [11, 12, 13, 14]
 
 # -- MAY CHANGE FROM FLIGHT TO FLIGHT --
 
 # Specify whether or not to use the motion capture system
-use_mocap = False
+use_mocap = True
 
 # Specify whether or not to use a custom controller
-use_controller = True
+use_controller = False
 
 # Specify whether or not to use a custom observer
 use_observer = False
@@ -85,6 +87,20 @@ variables = [
     'ae483log.m_3',
     'ae483log.m_4',
 ]
+
+###################################
+# PATH CODE
+n = 5
+x_range = (-1.0, 1.0)
+y_range = (-1.0, 1.0)
+min_distance = 0.2
+start_location = [0., 0.]
+seed = 11
+locations = sample_locations(n, x_range, y_range, min_distance, start_location, seed)
+path, _ = optimal_path(start_location, locations)
+
+print(f'Locations: {locations}')
+print(f'Path: {path}')
 
 
 ###################################
@@ -143,19 +159,9 @@ try:
     # Pause before takeoff
     drone_client.stop(3.0)
 
-    # Graceful takeoff
-    drone_client.move(0.0, 0.0, 0.20, 0.0, 1.0)
-    drone_client.move(0.0, 0.0, 0.35, 0.0, 1.0)
-    drone_client.move(0.0, 0.0, 0.50, 0.0, 1.0)
+    # Fly the optimal path
+    fly_path_milestone1(drone_client, path, t_hover=1.0, t_dropoff=1.0)
 
-    # Hover for ten seconds
-    drone_client.move(0.0, 0.0, 0.50, 0.0, 10.0)
-
-    # Graceful landing
-    drone_client.move(0.0, 0.0, 0.50, 0.0, 1.0)
-    drone_client.move(0.0, 0.0, 0.35, 0.0, 1.0)
-    drone_client.move(0.0, 0.0, 0.20, 0.0, 1.0)
-    
     # Pause after landing
     drone_client.stop(3.0)
 
