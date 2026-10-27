@@ -42,7 +42,7 @@ use_controller = False
 use_observer = False
 
 # Specify the name of the file in which to save flight data
-data_filename = 'hardware_data.json'
+data_filename = 'flight5_task4_mile1.json'
 
 # Specify the name of the file from which to read control gains, or None if
 # this flight does not use a custom controller. This file is written by your
