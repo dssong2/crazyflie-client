@@ -420,13 +420,17 @@ def fly_path_milestone1(drone_client: MyCrazyflieClient, path: np.ndarray, t_hov
     z_dropoff = 0.2  # Delivery height for dropping off packages
     v = 0.3 # Speed of the drone in m/s
 
-    x0, y0 = path[0]  # Starting location
+    start_location = path[0]  # Starting location
+    x0 = start_location[0]
+    y0 = start_location[1]
     p = [x0, y0, z_safe] # current position
+    print(p)
 
     # Take off to safe height
     drone_client.move_smooth([x0, y0, 0], p, 0, v)
 
-    for x, y in path[1:-1]:
+    for pos in path[1:-1]:
+        x, y = pos[0], pos[1]
         #fly to the next location at safe height
         drone_client.move_smooth(p, [x, y, z_safe], 0, v)
         p = [x, y, z_safe]
