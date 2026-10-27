@@ -3,6 +3,7 @@
 
 import json
 import os
+import numpy as np
 from ae483.clients import QualisysClient
 from ae483.myclients import MyCrazyflieClient
 from ae483.mytools import sample_locations, optimal_path, fly_path_milestone1
@@ -15,7 +16,7 @@ from ae483.mytools import sample_locations, optimal_path, fly_path_milestone1
 
 # Specify the uri of the drone to which you want to connect (if your radio
 # channel is X, the uri should be 'radio://0/X/2M/E7E7E7E7E7')
-uri = 'radio://0/59/2M/E7E7E7E7E7'
+uri = 'radio://0/15/2M/E7E7E7E7E7'
 
 # Specify the name of the rigid body that corresponds to your active marker
 # deck in the motion capture system. If your marker deck number is X, this name
@@ -35,6 +36,10 @@ marker_deck_ids = [11, 12, 13, 14]
 # Specify whether or not to use the motion capture system
 use_mocap = True
 
+# Specify whether or not to send motion capture data to the default observer
+# (only matters if use_mocap is True)
+use_mocap_in_observer = True
+
 # Specify whether or not to use a custom controller
 use_controller = False
 
@@ -42,12 +47,13 @@ use_controller = False
 use_observer = False
 
 # Specify the name of the file in which to save flight data
-data_filename = 'flight5_task4_mile1.json'
+data_filename = 'MOCAP_flight1_task4_mile1.json'
 
 # Specify the name of the file from which to read control gains, or None if
 # this flight does not use a custom controller. This file is written by your
 # design notebook.
 gains_filename = 'gains.json' if use_controller else None
+
 
 # Specify the variables you want to log at 100 Hz from the drone
 variables = [
@@ -131,6 +137,7 @@ drone_client = MyCrazyflieClient(
 # connect to the motion capture system
 mocap_client = None
 
+
 # Everything from here until "finally" is what happens during your flight. If
 # anything goes wrong - including if you press Ctrl-C - the code in the
 # "finally" block still runs, stopping the motors, disarming the drone, and
@@ -149,7 +156,7 @@ try:
 
     # Create and start the client that will connect to the motion capture system
     if use_mocap:
-        mocap_client = QualisysClient([{'name': marker_deck_name, 'callback': None}])
+        mocap_client = QualisysClient([{'name': marker_deck_name, 'callback': drone_client.send_pose if use_mocap_in_observer else None}])
 
     # Arm the drone. Brushless drones will not spin their motors until they are
     # armed. Brushed drones do not need to be armed, but arming them does no
@@ -159,8 +166,18 @@ try:
     # Pause before takeoff
     drone_client.stop(3.0)
 
+    # With mocap in the observer, the state estimate is in the mocap frame, so
+    # shift the path (planned relative to the start) to where the drone is sitting
+    if use_mocap and use_mocap_in_observer:
+        mocap_data = mocap_client.data[marker_deck_name]
+        if len(mocap_data['x']) == 0 or np.isnan(mocap_data['x'][-1]):
+            raise RuntimeError('No motion capture data received - not taking off')
+        p_start = np.array([mocap_data['x'][-1], mocap_data['y'][-1]])
+        print(f'Start position from mocap: {p_start}')
+        path = path + p_start
+
     # Fly the optimal path
-    fly_path_milestone1(drone_client, path, t_hover=1.0, t_dropoff=1.0)
+    fly_path_milestone1(drone_client, path, t_hover=1.0, t_dropoff=2.0)
 
     # Pause after landing
     drone_client.stop(3.0)
