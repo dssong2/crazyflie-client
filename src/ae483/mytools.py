@@ -443,4 +443,106 @@ def fly_path_milestone1(drone_client: MyCrazyflieClient, path: np.ndarray, t_hov
     drone_client.move_smooth(p, [x0, y0, z_safe], 0, v)
     # Land at the starting location
     drone_client.move_smooth([x0, y0, z_safe], [x0, y0, 0.1], 0, v) #added in small 0.1 m height to avoid crashing into the ground
-    drone_client.stop
+    drone_client.stop()
+
+
+
+def build_trajectory(path: np.ndarray, t_hover: float, t_dropoff: float, z_safe: float = 0.5, z_dropoff: float = 0.2, v: float = 0.3, z_land: float = 0.1, dt: float = 0.02):
+    """Build the desired position over time for the same flight sequence as fly_path_milestone1, using
+    the same constant-speed linear interpolation as drone_client.move_smooth.
+
+    Args:
+        path (np.ndarray): An array of shape (n+2, 2) containing the start, the locations in visit order, and the start again.
+        t_hover (float): The time to hover at safe height above each location (in seconds).
+        t_dropoff (float): The time to hover at delivery height at each location (in seconds).
+        z_safe (float): Safe height for flying between locations (in meters).
+        z_dropoff (float): Delivery height (in meters).
+        v (float): Speed of every move (in meters / second).
+        z_land (float): Height at which the landing move ends (in meters).
+        dt (float): Sample time of the trajectory (in seconds).
+
+    Returns:
+        tuple: A tuple containing the times (np.ndarray of shape (N,)) and desired positions (np.ndarray of shape (N, 3)).
+    """
+    x0, y0 = path[0]
+
+    # Waypoints to visit in order, each with the time to hold there
+    waypoints = [([x0, y0, z_safe], 0.)]
+    for x, y in path[1:-1]:
+        waypoints += [([x, y, z_safe], t_hover), ([x, y, z_dropoff], t_dropoff), ([x, y, z_safe], 0.)]
+    waypoints += [([x0, y0, z_safe], 0.), ([x0, y0, z_land], 0.)]
+
+    # Times at which each waypoint is reached (and left, if holding)
+    p = np.array([x0, y0, 0.])
+    points, times = [p], [0.]
+    for waypoint, hold in waypoints:
+        waypoint = np.array(waypoint)
+        points.append(waypoint)
+        times.append(times[-1] + np.linalg.norm(waypoint - p) / v)
+        if hold > 0:
+            points.append(waypoint)
+            times.append(times[-1] + hold)
+        p = waypoint
+    points = np.array(points)
+
+    # Sample by linear interpolation between waypoints
+    t = np.append(np.arange(0., times[-1], dt), times[-1])
+    x_des = np.column_stack([np.interp(t, times, points[:, i]) for i in range(3)])
+    return t, x_des
+
+def check_trajectory(path: np.ndarray, t: np.ndarray, x_des: np.ndarray, v_max: float = 0.3, z_safe: float = 0.5, z_dropoff: float = 0.2, tol: float = 1e-6):
+    """Check that a trajectory from build_trajectory visits the locations in order, never exceeds v_max,
+    and stays at or above z_safe whenever it moves horizontally.
+
+    Returns:
+        dict: Pass/fail flags ('order', 'speed', 'altitude'), the numbers behind them ('max_target_error', 'max_speed', 'min_z_moving'), and 'passed'.
+    """
+    # Closest approach to each location at delivery height: how close, and when
+    targets = np.hstack([path[1:-1], np.full((len(path) - 2, 1), z_dropoff)])
+    dists = np.linalg.norm(x_des[:, None] - targets[None], axis=2)
+    visit_times = t[np.argmin(dists, axis=0)]
+
+    # Speed and horizontal speed of the setpoints
+    velocity = np.diff(x_des, axis=0) / np.diff(t)[:, None]
+    moving = np.linalg.norm(velocity[:, :2], axis=1) > tol
+
+    result = {
+        'max_target_error': np.max(np.min(dists, axis=0)),
+        'max_speed': np.max(np.linalg.norm(velocity, axis=1)),
+        'min_z_moving': np.min(np.maximum(x_des[:-1, 2], x_des[1:, 2])[moving]), # max handles the sample at a corner
+    }
+    result['order'] = bool(result['max_target_error'] < 1e-3 and np.all(np.diff(visit_times) > 0))
+    result['speed'] = bool(result['max_speed'] <= v_max + tol)
+    result['altitude'] = bool(result['min_z_moving'] >= z_safe - tol)
+    result['passed'] = result['order'] and result['speed'] and result['altitude']
+    return result
+
+def plot_trajectory(path: np.ndarray, t: np.ndarray, x_des: np.ndarray, v_max: float = 0.3, z_safe: float = 0.5, z_dropoff: float = 0.2):
+    """Plot the x-y path, z over time, and speed over time of a trajectory from build_trajectory."""
+    speed = np.linalg.norm(np.diff(x_des, axis=0), axis=1) / np.diff(t)
+
+    fig, (ax_xy, ax_z, ax_v) = plt.subplots(1, 3, figsize=(15, 4), tight_layout=True)
+
+    ax_xy.plot(*x_des[:, :2].T, color='purple')
+    ax_xy.plot(*path[0], 's', label='Start')
+    ax_xy.plot(*path[1:-1].T, 'o', label='Locations')
+    for i, loc in enumerate(path[1:-1]):
+        ax_xy.annotate(str(i + 1), loc, textcoords='offset points', xytext=(6, 6))
+    ax_xy.set_aspect('equal')
+    ax_xy.set_title('Path in x-y')
+    ax_xy.legend(loc='upper left', bbox_to_anchor=(1.02, 1))
+
+    ax_z.plot(t, x_des[:, 2], color='purple')
+    ax_z.axhline(z_safe, color='r', ls='--', label='z_safe')
+    ax_z.axhline(z_dropoff, color='g', ls='--', label='z_dropoff')
+    ax_z.set_title('Height')
+    ax_z.legend()
+
+    ax_v.plot(t[1:], speed, color='purple')
+    ax_v.axhline(v_max, color='r', ls='--', label='v_max')
+    ax_v.set_title('Speed')
+    ax_v.legend()
+
+    for ax in (ax_xy, ax_z, ax_v):
+        ax.grid()
+    plt.show()
