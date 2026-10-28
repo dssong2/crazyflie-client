@@ -3,7 +3,6 @@
 
 import json
 import os
-import numpy as np
 from ae483.clients import QualisysClient
 from ae483.myclients import MyCrazyflieClient
 from ae483.mytools import sample_locations, optimal_path, fly_path_milestone1
@@ -35,10 +34,6 @@ marker_deck_ids = [11, 12, 13, 14]
 
 # Specify whether or not to use the motion capture system
 use_mocap = True
-
-# Specify whether or not to send motion capture data to the default observer
-# (only matters if use_mocap is True)
-use_mocap_in_observer = True
 
 # Specify whether or not to use a custom controller
 use_controller = False
@@ -156,7 +151,7 @@ try:
 
     # Create and start the client that will connect to the motion capture system
     if use_mocap:
-        mocap_client = QualisysClient([{'name': marker_deck_name, 'callback': drone_client.send_pose if use_mocap_in_observer else None}])
+        mocap_client = QualisysClient([{'name': marker_deck_name, 'callback': None}])
 
     # Arm the drone. Brushless drones will not spin their motors until they are
     # armed. Brushed drones do not need to be armed, but arming them does no
@@ -165,16 +160,6 @@ try:
 
     # Pause before takeoff
     drone_client.stop(3.0)
-
-    # With mocap in the observer, the state estimate is in the mocap frame, so
-    # shift the path (planned relative to the start) to where the drone is sitting
-    if use_mocap and use_mocap_in_observer:
-        mocap_data = mocap_client.data[marker_deck_name]
-        if len(mocap_data['x']) == 0 or np.isnan(mocap_data['x'][-1]):
-            raise RuntimeError('No motion capture data received - not taking off')
-        p_start = np.array([mocap_data['x'][-1], mocap_data['y'][-1]])
-        print(f'Start position from mocap: {p_start}')
-        path = path + p_start
 
     # Fly the optimal path
     fly_path_milestone1(drone_client, path, t_hover=1.5, t_dropoff=2.0)
