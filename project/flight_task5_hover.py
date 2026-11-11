@@ -42,17 +42,18 @@ use_observer = True
 configuration = 'empty'
 
 # Gains file for each configuration, written by controller_design.ipynb.
-# 'empty' is the hover-test design (m = 39 g, bare-drone J and Bryson headroom).
-# Replace these with the final per-configuration designs.
+# 'empty': m = 39 g and J measured with box v1 (project-MOI/runs/box_v1);
+# eq_f_z is the measured hover thrust (thrust_correction, no reflash needed).
+# 'partial' and 'full' do not exist yet.
 gains_files = {
-    'empty': 'gains_box_empty_test.json',
+    'empty': 'gains_box_empty_ffz.json',
     'partial': 'gains_box_partial.json',
     'full': 'gains_box_full.json',
 }
 
 # Run number for this configuration. The script refuses to overwrite an
 # existing file, so increase this for each new flight.
-run = 1
+run = 3
 
 # Hover height (m) and how long to hold it (s). Task 5 needs 10 s within 5 cm
 # of the setpoint; holding for 20 s leaves time to settle after takeoff.
@@ -134,7 +135,7 @@ with open(gains_filename, 'r') as f:
 gains = gains_file['gains']
 gains_created = gains_file['created']
 print(f'Using {len(gains)} gains from {gains_filename}, written {gains_created}')
-print(f'Hover thrust eq_f_z = {gains["eq_f_z"]:.4f} N (mass {gains["eq_f_z"] / 9.81 * 1e3:.1f} g)')
+print(f'Hover thrust feed-forward eq_f_z = {gains["eq_f_z"]:.4f} N')
 
 # Create and start the client that will connect to the drone
 drone_client = MyCrazyflieClient(
