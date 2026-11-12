@@ -10,6 +10,7 @@ descend to 0.2 m, drop off, climb) -> return to start -> land."""
 
 import json
 import os
+import re
 from ae483.clients import QualisysClient
 from ae483.myclients import MyCrazyflieClient
 from ae483.mytools import sample_locations, optimal_path, naive_path, fly_path_milestone1
@@ -47,18 +48,20 @@ use_observer = True
 configuration = 'empty'
 
 # Gains file for each configuration, written by controller_design.ipynb.
-# 'empty': m = 39 g and J measured with box v1 (project-MOI/runs/box_v1);
-# eq_f_z is the measured hover thrust (thrust_correction, no reflash needed).
-# 'partial' and 'full' do not exist yet.
+# 'empty': m = 39 g and J measured with box v1 (project-MOI/runs/box_v1), with
+# k_F corrected. These gains need the reflashed firmware (corrected k_F and
+# velocity feed-forward) - the script checks for it before flying.
+# 'partial' and 'full': written by controller_design.ipynb with that
+# configuration's mass (see CONFIGURATIONS there).
 gains_files = {
-    'empty': 'gains_box_empty_ffz.json',
+    'empty': 'gains_box_empty.json',
     'partial': 'gains_box_partial.json',
     'full': 'gains_box_full.json',
 }
 
-# Run number for this configuration. The script refuses to overwrite an
-# existing file, so increase this for each new flight.
-run = 3
+# Run number for this configuration, or None for the next unused one. The
+# script never overwrites a recorded flight.
+run = None
 
 # How long to hold above the start after takeoff (s). Task 5 needs 10 s within
 # 5 cm of the setpoint; 15 s leaves time to settle after takeoff.
@@ -76,6 +79,11 @@ t_hover = 1.5
 t_dropoff = 2.0
 z_safe = 0.5       # must match fly_path_milestone1
 
+if run is None:
+    # One past the highest existing run, so a deleted run's number is never reused
+    existing = [int(m.group(1)) for f in os.listdir('.')
+                if (m := re.fullmatch(rf'task5_path_{configuration}_run(\d+)\.json', f))]
+    run = max(existing, default=0) + 1
 data_filename = f'task5_path_{configuration}_run{run}.json'
 gains_filename = gains_files[configuration]
 
@@ -173,6 +181,7 @@ drone_client = MyCrazyflieClient(
 # Create this now so that it always exists, even if we never get far enough to
 # connect to the motion capture system
 mocap_client = None
+vbat_takeoff = None
 
 
 # Everything from here until "finally" is what happens during your flight. If
@@ -183,6 +192,17 @@ try:
     # Wait until the client is fully connected to the drone and until the state
     # estimate has had time to converge
     drone_client.wait_until_ready()
+    vbat_takeoff = drone_client.battery_voltage()
+    if vbat_takeoff is not None:
+        print(f'Battery before takeoff: {vbat_takeoff:.2f} V (full charge is about 4.2 V)')
+
+    # These gains assume the reflashed firmware: on the old firmware (k_F 14%
+    # low) eq_f_z = m g would command almost full power just to hover
+    if drone_client.cf.log.toc.get_element_by_complete_name('ae483log.v_x_des') is None:
+        raise SystemExit('The drone has the old firmware (no ae483log.v_x_des) - reflash it before flying these gains')
+
+    # Send the desired velocity with every move_smooth setpoint (feed-forward)
+    drone_client.velocity_feedforward = True
 
     # Send the control gains to the drone and confirm they arrived
     drone_client.set_gains(gains)
@@ -215,6 +235,10 @@ except KeyboardInterrupt:
     print('\nInterrupted - stopping the motors and saving whatever data were collected.')
 
 finally:
+    vbat_end = drone_client.battery_voltage()
+    if vbat_end is not None:
+        print(f'Battery at the end: {vbat_end:.2f} V')
+
     # Stop the motors, disarm, and disconnect from the drone. Each step is
     # guarded so that a failure in one of them cannot prevent the others - and,
     # in particular, cannot prevent your flight data from being saved.
@@ -257,6 +281,7 @@ finally:
         't_hover': t_hover,
         't_dropoff': t_dropoff,
     }
+    data['battery'] = {'vbat_before_takeoff': vbat_takeoff, 'vbat_end': vbat_end}
     data['drone'] = drone_client.data
     data['mocap'] = mocap_client.data.get(marker_deck_name, {}) if mocap_client is not None else {}
     data['bodies'] = mocap_client.data if mocap_client is not None else {}

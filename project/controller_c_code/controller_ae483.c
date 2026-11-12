@@ -46,6 +46,14 @@ static float p_x_des = 0.0f;
 static float p_y_des = 0.0f;
 static float p_z_des = 0.0f;
 
+// Desired velocity (feed-forward). Plain position setpoints arrive with zero
+// velocity (the commander zeroes every setpoint before decoding), so this only
+// matters when the client sends full-state setpoints (move_smooth with
+// velocity_feedforward = True).
+static float v_x_des = 0.0f;
+static float v_y_des = 0.0f;
+static float v_z_des = 0.0f;
+
 // Motor power command
 static uint16_t m_1 = 0;
 static uint16_t m_2 = 0;
@@ -142,8 +150,8 @@ static float tau_x_cmd = 0.0f;    // tau_x command
 static float tau_y_cmd = 0.0f;    // tau_y command
 static float w_x_old = 0.0f;      // value of w_x from previous time step
 static float w_y_old = 0.0f;      // value of w_y from previous time step
-static float J_x = 1.83e-05;      // principal moment of inertia about x_B axis
-static float J_y = 2.03e-05;      // principal moment of inertia about y_B axis
+static float J_x = 1.846e-05;     // principal moment of inertia about x_B axis (box v1, project-MOI)
+static float J_y = 1.899e-05;     // principal moment of inertia about y_B axis (box v1, project-MOI)
 static float dt = 0.002f;         // time step (corresponds to 500 Hz)
 // For integral action
 static float e_x = 0.0f;    // integrated error in p_x
@@ -324,6 +332,12 @@ void controllerAE483(control_t *control,
   p_y_des = setpoint->position.y;
   p_z_des = setpoint->position.z;
 
+  // Desired velocity, in the world frame. The controller's velocities are in
+  // the yaw frame, which matches the world frame for the yaw = 0 flights we fly.
+  v_x_des = setpoint->velocity.x;
+  v_y_des = setpoint->velocity.y;
+  v_z_des = setpoint->velocity.z;
+
   // Measurements
   w_x = radians(sensors->gyro.x);
   w_y = radians(sensors->gyro.y);
@@ -453,15 +467,16 @@ void controllerAE483(control_t *control,
     e_y += dt * (p_y - p_y_des);
     e_z += dt * (p_z - p_z_des);
 
-    tau_x_cmd = eq_tau_x_cmd - (k_tau_x_cmd_p_y * (p_y - p_y_des) + k_tau_x_cmd_phi * phi + k_tau_x_cmd_v_y * v_y + k_tau_x_cmd_w_x * w_x + k_tau_x_cmd_tau_x * tau_x + k_tau_x_cmd_e_y * e_y);
-    tau_y_cmd = eq_tau_y_cmd - (k_tau_y_cmd_p_x * (p_x - p_x_des) + k_tau_y_cmd_theta * theta + k_tau_y_cmd_v_x * v_x + k_tau_y_cmd_w_y * w_y + k_tau_y_cmd_tau_y * tau_y + k_tau_y_cmd_e_x * e_x);
+    tau_x_cmd = eq_tau_x_cmd - (k_tau_x_cmd_p_y * (p_y - p_y_des) + k_tau_x_cmd_phi * phi + k_tau_x_cmd_v_y * (v_y - v_y_des) + k_tau_x_cmd_w_x * w_x + k_tau_x_cmd_tau_x * tau_x + k_tau_x_cmd_e_y * e_y);
+    tau_y_cmd = eq_tau_y_cmd - (k_tau_y_cmd_p_x * (p_x - p_x_des) + k_tau_y_cmd_theta * theta + k_tau_y_cmd_v_x * (v_x - v_x_des) + k_tau_y_cmd_w_y * w_y + k_tau_y_cmd_tau_y * tau_y + k_tau_y_cmd_e_x * e_x);
     tau_z = eq_tau_z - (k_tau_z_psi * psi + k_tau_z_w_z * w_z);
-    f_z = eq_f_z - (k_f_z_p_z * (p_z - p_z_des) + k_f_z_v_z * v_z + k_f_z_e_z * e_z);
+    f_z = eq_f_z - (k_f_z_p_z * (p_z - p_z_des) + k_f_z_v_z * (v_z - v_z_des) + k_f_z_e_z * e_z);
     // Method of power distrubution
-    m_1 = limitUint16( -5151558.9f * tau_x_cmd -5151558.9f * tau_y_cmd -48300778.6f * tau_z + 167425.7f * f_z );
-    m_2 = limitUint16( -5151558.9f * tau_x_cmd + 5151558.9f * tau_y_cmd + 48300778.6f * tau_z + 167425.7f * f_z );
-    m_3 = limitUint16( 5151558.9f * tau_x_cmd + 5151558.9f * tau_y_cmd -48300778.6f * tau_z + 167425.7f * f_z );
-    m_4 = limitUint16( 5151558.9f * tau_x_cmd -5151558.9f * tau_y_cmd + 48300778.6f * tau_z + 167425.7f * f_z );
+    // (k_F, k_M corrected by the measured hover thrust - controller_design.ipynb section 4)
+    m_1 = limitUint16( -4424470.1f * tau_x_cmd -4424470.1f * tau_y_cmd -41483627.4f * tau_z + 143795.3f * f_z );
+    m_2 = limitUint16( -4424470.1f * tau_x_cmd + 4424470.1f * tau_y_cmd + 41483627.4f * tau_z + 143795.3f * f_z );
+    m_3 = limitUint16( 4424470.1f * tau_x_cmd + 4424470.1f * tau_y_cmd -41483627.4f * tau_z + 143795.3f * f_z );
+    m_4 = limitUint16( 4424470.1f * tau_x_cmd -4424470.1f * tau_y_cmd + 41483627.4f * tau_z + 143795.3f * f_z );
   }
   
   // Do not spin the motors unless the gains have been sent by flight.py.
@@ -502,6 +517,9 @@ LOG_ADD(LOG_FLOAT,       w_z,                    &w_z)
 LOG_ADD(LOG_FLOAT,       p_x_des,                &p_x_des)
 LOG_ADD(LOG_FLOAT,       p_y_des,                &p_y_des)
 LOG_ADD(LOG_FLOAT,       p_z_des,                &p_z_des)
+LOG_ADD(LOG_FLOAT,       v_x_des,                &v_x_des)
+LOG_ADD(LOG_FLOAT,       v_y_des,                &v_y_des)
+LOG_ADD(LOG_FLOAT,       v_z_des,                &v_z_des)
 LOG_ADD(LOG_FLOAT,       tau_x,                  &tau_x)
 LOG_ADD(LOG_FLOAT,       tau_y,                  &tau_y)
 LOG_ADD(LOG_FLOAT,       tau_z,                  &tau_z)

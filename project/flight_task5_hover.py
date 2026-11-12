@@ -6,6 +6,7 @@ using the custom controller and the mocap observer."""
 
 import json
 import os
+import re
 from ae483.clients import QualisysClient
 from ae483.myclients import MyCrazyflieClient
 
@@ -39,30 +40,43 @@ use_observer = True
 # -- MAY CHANGE FROM FLIGHT TO FLIGHT --
 
 # Box configuration: 'empty', 'partial', or 'full'
-configuration = 'empty'
+configuration = 'partial'
 
 # Gains file for each configuration, written by controller_design.ipynb.
-# 'empty': m = 39 g and J measured with box v1 (project-MOI/runs/box_v1);
-# eq_f_z is the measured hover thrust (thrust_correction, no reflash needed).
-# 'partial' and 'full' do not exist yet.
+# 'empty': m = 39 g and J measured with box v1 (project-MOI/runs/box_v1), with
+# k_F corrected. These gains need the reflashed firmware (corrected k_F and
+# velocity feed-forward) - the script checks for it before flying.
+# 'partial' and 'full': written by controller_design.ipynb with that
+# configuration's mass (see CONFIGURATIONS there).
 gains_files = {
-    'empty': 'gains_box_empty_ffz.json',
+    'empty': 'gains_box_empty.json',
     'partial': 'gains_box_partial.json',
     'full': 'gains_box_full.json',
 }
 
-# Run number for this configuration. The script refuses to overwrite an
-# existing file, so increase this for each new flight.
-run = 3
+# Run number for this configuration, or None for the next unused one. The
+# script never overwrites a recorded flight.
+run = None
 
 # Hover height (m) and how long to hold it (s). Task 5 needs 10 s within 5 cm
 # of the setpoint; holding for 20 s leaves time to settle after takeoff.
 z_hover = 0.3
 t_hold = 20.0
 
-# Vertical speed for takeoff and landing (m/s)
+# Vertical speed for takeoff and the first part of the landing (m/s)
 v_z = 0.2
 
+# Soft landing: descend at v_z to z_land_slow, then at v_land to z_land_end,
+# and only then cut the motors (about 2 cm above where the drone sits)
+z_land_slow = 0.10
+z_land_end = 0.03
+v_land = 0.05
+
+if run is None:
+    # One past the highest existing run, so a deleted run's number is never reused
+    existing = [int(m.group(1)) for f in os.listdir('.')
+                if (m := re.fullmatch(rf'task5_{configuration}_run(\d+)\.json', f))]
+    run = max(existing, default=0) + 1
 data_filename = f'task5_{configuration}_run{run}.json'
 gains_filename = gains_files[configuration]
 
@@ -96,6 +110,8 @@ variables = [
     'ae483log.e_y',
     'ae483log.e_z',
     'ae483log.a_z',
+    # Battery voltage (thrust per motor command drops as the battery sags)
+    'pm.vbat',
     # Motor power commands (saturate at 65535)
     'ae483log.m_1',
     'ae483log.m_2',
@@ -149,6 +165,7 @@ drone_client = MyCrazyflieClient(
 # Create this now so that it always exists, even if we never get far enough to
 # connect to the motion capture system
 mocap_client = None
+vbat_takeoff = None
 
 
 # Everything from here until "finally" is what happens during your flight. If
@@ -159,6 +176,17 @@ try:
     # Wait until the client is fully connected to the drone and until the state
     # estimate has had time to converge
     drone_client.wait_until_ready()
+    vbat_takeoff = drone_client.battery_voltage()
+    if vbat_takeoff is not None:
+        print(f'Battery before takeoff: {vbat_takeoff:.2f} V (full charge is about 4.2 V)')
+
+    # These gains assume the reflashed firmware: on the old firmware (k_F 14%
+    # low) eq_f_z = m g would command almost full power just to hover
+    if drone_client.cf.log.toc.get_element_by_complete_name('ae483log.v_x_des') is None:
+        raise SystemExit('The drone has the old firmware (no ae483log.v_x_des) - reflash it before flying these gains')
+
+    # Send the desired velocity with every move_smooth setpoint (feed-forward)
+    drone_client.velocity_feedforward = True
 
     # Send the control gains to the drone and confirm they arrived
     drone_client.set_gains(gains)
@@ -187,8 +215,9 @@ try:
     # Hold
     drone_client.move(0., 0., z_hover, 0., t_hold)
 
-    # Land
-    drone_client.move_smooth([0., 0., z_hover], [0., 0., 0.1], 0., v_z)
+    # Land softly
+    drone_client.move_smooth([0., 0., z_hover], [0., 0., z_land_slow], 0., v_z)
+    drone_client.move_smooth([0., 0., z_land_slow], [0., 0., z_land_end], 0., v_land)
 
     # Pause after landing
     drone_client.stop(3.0)
@@ -197,6 +226,10 @@ except KeyboardInterrupt:
     print('\nInterrupted - stopping the motors and saving whatever data were collected.')
 
 finally:
+    vbat_end = drone_client.battery_voltage()
+    if vbat_end is not None:
+        print(f'Battery at the end: {vbat_end:.2f} V')
+
     # Stop the motors, disarm, and disconnect from the drone. Each step is
     # guarded so that a failure in one of them cannot prevent the others - and,
     # in particular, cannot prevent your flight data from being saved.
@@ -227,7 +260,11 @@ finally:
         'z_hover': z_hover,
         't_hold': t_hold,
         'v_z': v_z,
+        'z_land_slow': z_land_slow,
+        'z_land_end': z_land_end,
+        'v_land': v_land,
     }
+    data['battery'] = {'vbat_before_takeoff': vbat_takeoff, 'vbat_end': vbat_end}
     data['drone'] = drone_client.data
     data['mocap'] = mocap_client.data.get(marker_deck_name, {}) if mocap_client is not None else {}
     data['bodies'] = mocap_client.data if mocap_client is not None else {}
