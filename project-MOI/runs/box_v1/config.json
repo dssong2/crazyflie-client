@@ -1,0 +1,21 @@
+{
+  "description": "Box v1, empty (Task 5 empty configuration)",
+  "g": 9.81,
+
+  "_comment_geometry": "Body frame, meters. Origin = CG of the drone alone. +x forward, +y left, +z up.",
+
+  "drone": { "mass": 0.032, "delta_mass": 0.001 },
+
+  "parts": [
+    { "name": "box_v1_empty", "mass": 0.007, "delta_mass": 0.0,
+      "cg": [0.0, 0.0, -0.019], "delta_cg": [0.0, 0.0, 0.002] }
+  ],
+
+  "_comment_axes": "pivot = any point on the rig's hinge axis. t_min/t_max_offset trim garbage at start/end (s). prominence = peak threshold as a fraction of max |w|.",
+
+  "axes": {
+    "x": { "pivot": [0.0, 0.029, 0.0], "delta_pivot": [0.0, 0.002, 0.0], "t_min_offset": 1.0, "t_max_offset": 0.0 },
+    "y": { "pivot": [0.029, 0.0, 0.0], "delta_pivot": [0.002, 0.0, 0.0], "t_min_offset": 0.0, "t_max_offset": 0.0 },
+    "z": { "pivot": [0.015, 0.0, 0.0], "delta_pivot": [0.002, 0.0, 0.0], "t_min_offset": 3.3, "t_max_offset": 0.0 }
+  }
+}

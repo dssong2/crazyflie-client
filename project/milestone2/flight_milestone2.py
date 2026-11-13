@@ -95,6 +95,15 @@ variables = [
     'ae483log.m_2',
     'ae483log.m_3',
     'ae483log.m_4',
+    # Mocap as received by the drone (custom observer)
+    'ae483log.num_mocap',
+    'ae483log.mocap_age',
+    'ae483log.p_x_mocap',
+    'ae483log.p_y_mocap',
+    'ae483log.p_z_mocap',
+    'ae483log.psi_mocap',
+    'ae483log.theta_mocap',
+    'ae483log.phi_mocap',
 ]
 
 ###################################
@@ -197,8 +206,13 @@ try:
     drone_client.set_gains(gains)
 
     # Create and start the client that will connect to the motion capture system
+    # With the custom (mocap) observer, each mocap pose is also forwarded to the
+    # drone, where ae483UpdateWithPose receives it
     if use_mocap:
-        mocap_client = QualisysClient([{'name': marker_deck_name, 'callback': None}])
+        mocap_client = QualisysClient([{
+            'name': marker_deck_name,
+            'callback': drone_client.send_pose if use_observer else None,
+        }])
 
     # Arm the drone. Brushless drones will not spin their motors until they are
     # armed. Brushed drones do not need to be armed, but arming them does no

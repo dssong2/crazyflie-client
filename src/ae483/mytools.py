@@ -395,7 +395,7 @@ def plot_path(locations: np.ndarray, start_location: np.ndarray, path: np.ndarra
     plt.grid()
     plt.show()
     
-def fly_path_milestone1(drone_client: MyCrazyflieClient, path: np.ndarray, t_hover: float, t_dropoff: float):
+def fly_path_milestone1(drone_client: MyCrazyflieClient, path: np.ndarray, t_hover: float, t_dropoff: float, t_hold_start: float = 0.):
     """Fly the drone through the given path by calling drone_client.move(). Called in flight.py.
 
     Args:
@@ -403,6 +403,8 @@ def fly_path_milestone1(drone_client: MyCrazyflieClient, path: np.ndarray, t_hov
         path (np.ndarray): An array of shape (n, 2) containing the locations to visit in optimal order. (actually is shapen (n+2, 2) because it includes the start and end locations)
         t_hover (float): The time to hover at each location (in seconds).
         t_dropoff (float): The time to hover at delivery height at each location (in seconds).
+        t_hold_start (float): Time to hold at safe height above the start after takeoff, before
+            the path (in seconds). 0 (the default) flies exactly as in Milestone 1.
     """
                     # TODO: implement this function as required by Task 3 of Milestone #1
                     # Drone sequence:
@@ -429,6 +431,10 @@ def fly_path_milestone1(drone_client: MyCrazyflieClient, path: np.ndarray, t_hov
 
     # Take off to safe height
     drone_client.move_smooth([x0, y0, 0], p, 0, v_vertical)
+
+    # Optional hold above the start (Milestone 2 Task 5: hold within 5 cm for 10 s)
+    if t_hold_start > 0:
+        drone_client.move(x0, y0, z_safe, 0, t_hold_start)
 
     for pos in path[1:-1]:
         x, y = pos[0], pos[1]
