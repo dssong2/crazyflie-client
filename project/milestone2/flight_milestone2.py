@@ -5,6 +5,8 @@ import json
 import os
 from ae483.clients import QualisysClient
 from ae483.myclients import MyCrazyflieClient
+import time
+import numpy as np
 from ae483.mytools import sample_locations, optimal_path, naive_path, fly_path_milestone1
 
 
@@ -15,31 +17,31 @@ from ae483.mytools import sample_locations, optimal_path, naive_path, fly_path_m
 
 # Specify the uri of the drone to which you want to connect (if your radio
 # channel is X, the uri should be 'radio://0/X/2M/E7E7E7E7E7')
-uri = 'radio://0/15/2M/E7E7E7E7E7'
+uri = 'radio://0/59/2M/E7E7E7E7E7'
 
 # Specify the name of the rigid body that corresponds to your active marker
 # deck in the motion capture system. If your marker deck number is X, this name
 # should be 'marker_deck_X'.
-marker_deck_name = 'marker_deck_10'
+marker_deck_name = 'marker_deck_50'
 
 # Specify the marker IDs that correspond to your active marker deck in the
 # motion capture system. If your marker deck number is X, these IDs should be
 # [X + 1, X + 2, X + 3, X + 4]. They are listed in clockwise order (viewed
 # top-down), starting from the front.
-marker_deck_ids = [11, 12, 13, 14]
+marker_deck_ids = [51, 52, 53, 54]
 
 # -- MAY CHANGE FROM FLIGHT TO FLIGHT --
 
 # Which target set to fly (a key of target_sets below) and in which order:
 # 'optimal' (Held-Karp) or 'naive' (greedy nearest-neighbor)
-target_set = 1
+target_set = 2
 order = 'optimal'
 
 # Specify whether or not to use the motion capture system
 use_mocap = True
 
 # Specify whether or not to use a custom controller
-use_controller = False
+use_controller = True
 
 # Specify whether or not to use a custom observer
 use_observer = False
@@ -56,6 +58,8 @@ gains_filename = 'gains.json' if use_controller else None
 
 # Specify the variables you want to log at 100 Hz from the drone
 variables = [
+    # Battery voltage (read by the preflight battery check)
+    'pm.vbat',
     # WHEN RUNNING DEFAULT CONTROLLER
     # State estimates
     'stateEstimate.x',
@@ -109,11 +113,12 @@ variables = [
 # Set 1 is the Milestone 1 set as a placeholder; fill in sets 1-5 once they are
 # chosen.
 target_sets = {
-    1: (5, 11),
+    1: (5, 11), # 5 targets, seed 11
+    2: (5, 12), # 5 targets, seed 12
 }
 
-x_range = (-1.0, 1.0)
-y_range = (-1.0, 1.0)
+x_range = (-0.5, 0.5)
+y_range = (-0.5, 0.5)
 min_distance = 0.2
 start_location = [0., 0.]
 t_hover = 1.5
@@ -173,6 +178,25 @@ try:
     # Wait until the client is fully connected to the drone and until the state
     # estimate has had time to converge
     drone_client.wait_until_ready()
+    
+        # Read the battery at rest, before arming or sending flight commands.
+    battery_deadline = time.monotonic() + 5.0
+    while not drone_client.data.get('pm.vbat', {}).get('data'):
+        if time.monotonic() >= battery_deadline:
+            raise RuntimeError('No battery voltage received before flight.')
+        time.sleep(0.05)
+    battery_voltage = drone_client.data['pm.vbat']['data'][-1]
+    # Interpolate the announcement's charge curve. Clamp to its supplied
+    # 0–90% range rather than inventing a voltage for 100% charge.
+    battery_percentage = np.interp(
+        battery_voltage,
+        [3.00, 3.78, 3.83, 3.87, 3.89, 3.92, 3.96, 4.00, 4.04, 4.10],
+        [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
+    )
+    print(
+        f'Preflight battery: {battery_voltage:.2f} V, '
+        f'{battery_percentage:.1f}%'
+    )
 
     # Send the control gains to the drone and confirm they arrived. This does
     # nothing if gains is None. It happens before the motion capture system is
