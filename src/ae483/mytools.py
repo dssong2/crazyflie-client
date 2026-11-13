@@ -418,7 +418,8 @@ def fly_path_milestone1(drone_client: MyCrazyflieClient, path: np.ndarray, t_hov
 
     z_safe = 0.5  # Safe height for flying between locations
     z_dropoff = 0.2  # Delivery height for dropping off packages
-    v = 0.3 # Speed of the drone in m/s
+    v_vertical = 0.1 # Speed of the drone in m/s
+    v_lateral = 0.3
 
     start_location = path[0]  # Starting location
     x0 = start_location[0]
@@ -427,27 +428,27 @@ def fly_path_milestone1(drone_client: MyCrazyflieClient, path: np.ndarray, t_hov
     print(p)
 
     # Take off to safe height
-    drone_client.move_smooth([x0, y0, 0], p, 0, v)
+    drone_client.move_smooth([x0, y0, 0], p, 0, v_vertical)
 
     for pos in path[1:-1]:
         x, y = pos[0], pos[1]
         #fly to the next location at safe height
-        drone_client.move_smooth(p, [x, y, z_safe], 0, v)
+        drone_client.move_smooth(p, [x, y, z_safe], 0, v_lateral)
         p = [x, y, z_safe]
         # hover at the location for t_hover sec
         drone_client.move(x, y, z_safe, 0, t_hover)
         # descend to delivery height
-        drone_client.move_smooth(p, [x, y, z_dropoff], 0, v)
+        drone_client.move_smooth(p, [x, y, z_dropoff], 0, v_lateral)
         # hover at delivery height for t_dropoff sec
         drone_client.move(x,y,z_dropoff, 0, t_dropoff)
         # ascend back to safe height
-        drone_client.move_smooth([x, y, z_dropoff], p, 0 , v)
+        drone_client.move_smooth([x, y, z_dropoff], p, 0 , v_lateral)
 
     # Return to the starting location at safe height
-    drone_client.move_smooth(p, [x0, y0, z_safe], 0, v)
+    drone_client.move_smooth(p, [x0, y0, z_safe], 0, v_lateral)
     # Land at the starting location
-    drone_client.move_smooth([x0, y0, z_safe], [x0, y0, 0.1], 0, v) #added in small 0.1 m height to avoid crashing into the ground
-    drone_client.stop()
+    drone_client.move_smooth([x0, y0, z_safe], [x0, y0, 0.1], 0, v_vertical) #added in small 0.1 m height to avoid crashing into the ground
+    drone_client.stop(1.0)
 
 
 
