@@ -48,7 +48,7 @@ configuration = 'partial'
 # velocity feed-forward) - the script checks for it before flying.
 # 'partial' and 'full': written by controller_design.ipynb with that
 # configuration's mass (see CONFIGURATIONS there).
-gains_files = {
+gains_files = {     
     'empty': 'gains_box_empty.json',
     'partial': 'gains_box_partial.json',
     'full': 'gains_box_full.json',
@@ -207,7 +207,7 @@ try:
 
     # Pause before takeoff (also lets mocap reach the drone; the firmware will
     # not start the motors until it has a mocap start frame)
-    drone_client.stop(3.0)
+    drone_client.stop(2.0)
 
     # Take off
     drone_client.move_smooth([0., 0., 0.], [0., 0., z_hover], 0., v_z)
@@ -220,7 +220,7 @@ try:
     drone_client.move_smooth([0., 0., z_land_slow], [0., 0., z_land_end], 0., v_land)
 
     # Pause after landing
-    drone_client.stop(3.0)
+    drone_client.stop(2.0)
 
 except KeyboardInterrupt:
     print('\nInterrupted - stopping the motors and saving whatever data were collected.')
