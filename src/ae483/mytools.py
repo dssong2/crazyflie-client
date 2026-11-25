@@ -444,11 +444,11 @@ def fly_path_milestone1(drone_client: MyCrazyflieClient, path: np.ndarray, t_hov
         # hover at the location for t_hover sec
         drone_client.move(x, y, z_safe, 0, t_hover)
         # descend to delivery height
-        drone_client.move_smooth(p, [x, y, z_dropoff], 0, v_lateral)
+        drone_client.move_smooth(p, [x, y, z_dropoff], 0, v_vertical)
         # hover at delivery height for t_dropoff sec
         drone_client.move(x,y,z_dropoff, 0, t_dropoff)
         # ascend back to safe height
-        drone_client.move_smooth([x, y, z_dropoff], p, 0 , v_lateral)
+        drone_client.move_smooth([x, y, z_dropoff], p, 0 , v_vertical)
 
     # Return to the starting location at safe height
     drone_client.move_smooth(p, [x0, y0, z_safe], 0, v_lateral)

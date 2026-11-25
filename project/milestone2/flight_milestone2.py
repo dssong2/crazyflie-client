@@ -35,10 +35,10 @@ marker_deck_ids = [51, 52, 53, 54]
 # Which target set to fly (a key of target_sets below) and in which order:
 # 'optimal' (Held-Karp) or 'naive' (greedy nearest-neighbor)
 target_set = 2
-order = 'optimal'
+order = 'naive'
 
 # Specify whether or not to use the motion capture system
-use_mocap = True
+use_mocap = False
 
 # Specify whether or not to use a custom controller
 use_controller = True
@@ -224,6 +224,7 @@ try:
 
     # Fly the path in the chosen order
     fly_path_milestone1(drone_client, path, t_hover=t_hover, t_dropoff=t_dropoff)
+    # drone_client.move(0., 0., 0.3, 0., 2.0)
 
     # Pause after landing
     drone_client.stop(3.0)
